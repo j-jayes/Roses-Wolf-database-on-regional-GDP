@@ -1,0 +1,195 @@
+---
+title: "cleaning-script"
+author: "JJayes"
+date: "05/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+
+# library(readxl)
+# df <- read_excel("data.xlsx") %>% janitor::clean_names()
+# 
+# df <- df %>% pivot_longer(-c(series, country_current_borders, nuts_codes, region), names_to = "year") %>%
+#   mutate(year = parse_number(year)) %>%
+#   rename(nuts_code = nuts_codes)
+# 
+# df <- df %>%
+#   mutate(value = case_when(
+#     series == "Table A.3: Population (1000s)" ~ value * 1000,
+#     series %in% c("Table A.4: Share of Agriculture in Total Employment",
+#                   "Table A.5: Share of Industry and Mining in Total Employment",
+#                   "Table A.6: Share of Services in Total Employment") ~ value * 100,
+#     TRUE ~ value
+#   ))
+# 
+# df %>% distinct(series)
+# 
+# df <- df %>%
+#   mutate(series = case_when(
+#     series == "Table A.1: Regional GDP (1990 International Dollars, millions)" ~ "Regional GDP (1990 $m)",
+#     series == "Table A.1: Regional GDP (2011 International Dollars, millions)" ~ "Regional GDP (2011 $m)",
+#     series == "Table A.4: Share of Agriculture in Total Employment" ~ "Agric. share of employment",
+#     series == "Table A.3: Population (1000s)" ~ "Population",
+#     series == "Table A.5: Share of Industry and Mining in Total Employment" ~ "Industry share of employment",
+#     series == "Table A.6: Share of Services in Total Employment" ~ "Services share of employment",
+#     TRUE ~ series
+#   ))
+# 
+# df %>% write_rds("data.rds")
+
+df <- read_rds("data.rds")
+
+
+```
+
+## Working on map
+
+```{r}
+library(sf)
+
+map <- read_sf("regions_nuts2.shp") %>% janitor::clean_names()
+
+# map_tbl <- map %>% as_tibble()
+# 
+# map_tbl %>% 
+#   ggplot(aes(geometry = geometry)) +
+#   geom_sf() +
+#   coord_sf()
+```
+
+## Making the map files smaller
+
+```{r}
+# library(rmapshaper)
+# map_simple <- ms_simplify(map, keep = 0.1,
+#                                 keep_shapes = FALSE)
+# 
+# map_tbl_simple <- map_simple %>% as_tibble()
+
+# map_tbl_simple %>% write_rds("map_simple.rds")
+
+map_simple <- read_rds("map_simple.rds")
+```
+
+
+Could write a nice function that joins onto the map and draws the value
+
+```{r}
+df %>% distinct(series)
+
+# df %>% 
+#   filter(series == "Agric. share of employment") %>% 
+#   inner_join(map_simple) %>% 
+#   ggplot(aes(geometry = geometry, fill = value)) +
+#   geom_sf() +
+#   facet_wrap(~ year) +
+#   coord_sf()
+
+```
+
+## Leaflet version
+
+Lets make a tibble that will deal with legend labels
+
+```{r}
+legend_tbl <- df %>% distinct(series) %>% 
+  bind_cols(tibble(prefix = c("$", "$", "", "", "", ""),
+                   suffix = c("m", "m", "", "%", "%", "%")))
+```
+
+
+```{r}
+library(leaflet)
+library(glue)
+
+series_input <- "Regional GDP (1990 $m)"
+
+year_input <- 2000
+
+legend_prefix <- legend_tbl %>% 
+  filter(series == series_input) %>% 
+  select(prefix) %>% pull()
+
+legend_suffix <- legend_tbl %>% 
+  filter(series == series_input) %>% 
+  select(suffix) %>% pull()
+
+
+df_map <- df %>%
+  filter(
+    series == series_input,
+    year == year_input
+  ) %>%
+  filter(!is.na(value)) %>%
+  mutate(
+    value_table = str_c(legend_prefix, format(round(value, 0), big.mark = " "), legend_suffix),
+    region_table = region,
+    year_table = year
+  ) %>%
+  gather(
+    key, vt,
+    region_table, year_table, value_table
+  ) %>%
+  mutate(
+    key = case_when(
+      key == "region_table" ~ "Region",
+      key == "year_table" ~ "Year",
+      TRUE ~ series_input
+    ),
+    key = paste0("<b>", key, "</b>")
+  ) %>%
+  replace_na(list(vt = "Unknown")) %>%
+  nest(data = c(key, vt)) %>%
+  mutate(html = map(data,
+    knitr::kable,
+    format = "html",
+    escape = FALSE,
+    col.names = c("", "")
+  ))
+
+pal <- colorNumeric(
+  palette = "Spectral",
+  domain = df_map %>% select(value))
+
+  # pal <- reactive({
+  #   colorNumeric(
+  #     palette = "Spectral",
+  #     domain = df_map() %>% select(value)
+  #   )
+  # })
+
+df_map %>% 
+  inner_join(map_simple) %>% 
+  st_sf() %>% 
+  leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addPolygons(color = ~ pal(value),
+              fillOpacity = .3,
+              popup = ~ html) %>% 
+  addLegend(position = "bottomright",
+        pal = pal, values = ~value,
+        title = glue("{ series_input }"),
+        labFormat = labelFormat(prefix = glue(legend_prefix),
+                                suffix = glue(legend_suffix)))
+```
+
+## Plots
+
+```{r}
+regions <- df %>% 
+  distinct(region) %>% sample_n(20)
+
+df %>% 
+  filter(series == series_input) %>% 
+  filter(region %in% regions$region) %>% 
+  ggplot(aes(year, value, colour = region)) +
+  geom_line()
+
+```
+
