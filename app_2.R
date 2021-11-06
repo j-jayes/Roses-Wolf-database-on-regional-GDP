@@ -4,7 +4,7 @@ library(glue)
 library(leaflet)
 library(sf)
 library(shinyWidgets)
-library(ggiraph)
+library(plotly)
 library(bslib)
 library(thematic)
 
@@ -14,7 +14,7 @@ df_country <- read_rds("data_country.rds")
 map_simple <- read_rds("map_simple.rds")
 
 thematic_shiny(font = "auto")
-theme_update(text = element_text(size = 17))
+# theme_update(text = element_text(size = 17))
 
 legend_tbl <- df %>% distinct(series) %>% 
   bind_cols(tibble(prefix = c("$", "$", "", "", "", ""),
@@ -22,37 +22,38 @@ legend_tbl <- df %>% distinct(series) %>%
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-  theme = bs_theme(bootswatch = "solar", font_scale = 1.5),
+  theme = bs_theme(bootswatch = "solar", font_scale = 1.1),
   
   # Application title
   titlePanel("Europe's regional development"),
-
+  
   # Sidebar with a slider input for number of bins
   sidebarLayout(
     sidebarPanel(width = 3,
-      selectizeInput("series_input",
-        "Series:",
-        choices = unique(df$series),
-        selected = "Industry share of employment",
-        multiple = FALSE
-      ),
-      sliderTextInput("year_input",
-        "Year:",
-        choices = c(1900, 1910, 1925, 1938, 1950, 1960, 1970, 1980, 1990, 2000, 2010, 2015),
-        selected = 1950,
-        animate = TRUE
-      )
+                 selectizeInput("series_input",
+                                "Series:",
+                                choices = unique(df$series),
+                                selected = "Industry share of employment",
+                                multiple = FALSE
+                 ),
+                 sliderTextInput("year_input",
+                                 "Year:",
+                                 choices = c(1900, 1910, 1925, 1938, 1950, 1960, 1970, 1980, 1990, 2000, 2010, 2015),
+                                 selected = 1950,
+                                 animate = TRUE
+                 )
     ),
-
+    
     # Show a plot of the generated distribution
     mainPanel(
       fluidRow(
         column(width = 7,
                leafletOutput("leaflet_map", height = 800)),
         column(width = 5,
-               ggiraphOutput("stacked_fill"),
-               ggiraphOutput("facet_line")))
-
+               plotlyOutput("stacked_fill"),
+               plotlyOutput("gdp_line"),
+               plotlyOutput("pop_line")))
+      
     )
   )
 )
@@ -60,21 +61,21 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-
+  
   legend_prefix <- reactive({
     legend_tbl %>%
       filter(series == input$series_input) %>%
       select(prefix) %>%
       pull()
   })
-
+  
   legend_suffix <- reactive({
     legend_tbl %>%
       filter(series == input$series_input) %>%
       select(suffix) %>%
       pull()
   })
-
+  
   df_map <- reactive({
     df %>%
       filter(
@@ -102,10 +103,10 @@ server <- function(input, output) {
       replace_na(list(vt = "Unknown")) %>%
       nest(data = c(key, vt)) %>%
       mutate(html = map(data,
-        knitr::kable,
-        format = "html",
-        escape = FALSE,
-        col.names = c("", "")
+                        knitr::kable,
+                        format = "html",
+                        escape = FALSE,
+                        col.names = c("", "")
       )) %>% 
       inner_join(map_simple) %>% 
       st_sf()
@@ -142,7 +143,7 @@ server <- function(input, output) {
   
   observe({
     pal <- colorpal()
-
+    
     leafletProxy("leaflet_map", data = df_map()) %>%
       clearControls() %>%
       addLegend(position = "bottomright",
@@ -150,14 +151,14 @@ server <- function(input, output) {
                 values = ~value,
                 title = glue(input$series_input),
                 labFormat = labelFormat(
-          prefix = glue(legend_prefix()),
-          suffix = glue(legend_suffix())
-        ))
+                  prefix = glue(legend_prefix()),
+                  suffix = glue(legend_suffix())
+                ))
   })
   
   # output$click_test <- renderPrint({reactiveValuesToList(input)})
-
-  output$stacked_fill <- renderggiraph({
+  
+  output$stacked_fill <- renderPlotly({
     
     req(input$leaflet_map_shape_click$id)
     
@@ -166,55 +167,84 @@ server <- function(input, output) {
                            "Industry share of employment",
                            "Services share of employment"),
              region == input$leaflet_map_shape_click$id) %>% 
-      mutate(series = str_remove(series, "share of employment")) %>% 
-      ggplot(aes(year, value, fill = series, tooltip = series)) +
-      geom_area_interactive(position = "fill") +
+      mutate(series = str_remove(series, "share of employment"),
+             value_disp = str_c(round(value, 0), "%")) %>% 
+      ggplot(aes(year, value, fill = series, label = value_disp)) +
+      geom_area(position = "fill") +
       scale_y_continuous(labels = scales::percent_format()) +
       scale_fill_brewer(palette = "Spectral") +
-      theme(legend.position = "bottom") +
+      theme(legend.position = "none") +
       labs(x = NULL,
            y = NULL,
            fill = NULL,
            title = "Employment composition")
     
     
-    ggiraph(ggobj = g)
+    ggplotly(g, tooltip = c("series", "label", "year"))
     
   })
   
-  output$facet_line <- renderggiraph({
-    
-    req(input$leaflet_map_shape_click$id)
-    
-    country_name <- df %>% 
-      filter(region == input$leaflet_map_shape_click$id) %>% 
-      distinct(country_current_borders) %>% pull()
-    
-    f <- df %>% 
+  country_name <- reactive({df %>% 
+    filter(region == input$leaflet_map_shape_click$id) %>% 
+    distinct(country_current_borders) %>% pull()})
+  
+  df_line <- reactive({df %>% 
       filter(series %in% c("Population", "Regional GDP (2011 $m)"),
              region == input$leaflet_map_shape_click$id) %>% 
       inner_join(df_country, by = c("country_current_borders", "year", "series")) %>% 
       pivot_longer(c(value, country_avg), names_to = "stat") %>% 
       mutate(stat = case_when(
-        stat == "country_avg" ~ str_c("Avg. for regions in ", country_name),
+        stat == "country_avg" ~ str_c("Avg. for regions in ", country_name()),
         TRUE ~ input$leaflet_map_shape_click$id
-      )) %>% 
+      ))
+    
+  })
+  
+  output$pop_line <- renderPlotly({
+    
+    req(input$leaflet_map_shape_click$id)
+    
+    f <-  df_line() %>% 
+      filter(series == "Population") %>% 
       mutate(value_disp = format(round(value), big.mark = " "),
              tooltip = str_c(stat, " ", value_disp)) %>% 
       ggplot(aes(year, value, colour = stat, tooltip = tooltip)) +
       geom_line(aes(year, value, colour = stat, group = stat), cex = 2, alpha = .8) +
-      geom_point_interactive(cex = 3, alpha = .8) +
-      facet_wrap(~ series, scales = "free_y", nrow = 2) +
+      geom_point(cex = 3, alpha = .8) +
       scale_y_continuous(labels = scales::number_format()) +
       scale_colour_manual(values = c("#D53E4F", "#66C2A5")) +
-      theme(legend.position = "bottom") +
+      theme(legend.position = "none") +
       labs(x = NULL,
            y = NULL,
            colour = NULL,
            title = "Population and GDP") 
     
     
-    ggiraph(ggobj = f)
+    ggplotly(f, tooltip = "tooltip")
+    
+  })
+  
+  output$gdp_line <- renderPlotly({
+    
+    req(input$leaflet_map_shape_click$id)
+    
+    h <-  df_line() %>% 
+      filter(series == "Regional GDP (2011 $m)") %>% 
+      mutate(value_disp = format(round(value), big.mark = " "),
+             tooltip = str_c(stat, " ", value_disp)) %>% 
+      ggplot(aes(year, value, colour = stat, tooltip = tooltip)) +
+      geom_line(aes(year, value, colour = stat, group = stat), cex = 2, alpha = .8) +
+      geom_point(cex = 3, alpha = .8) +
+      scale_y_continuous(labels = scales::number_format()) +
+      scale_colour_manual(values = c("#D53E4F", "#66C2A5")) +
+      theme(legend.position = "none") +
+      labs(x = NULL,
+           y = NULL,
+           colour = NULL,
+           title = "Population and GDP") 
+    
+    
+    ggplotly(h, tooltip = "tooltip")
     
   })
   
