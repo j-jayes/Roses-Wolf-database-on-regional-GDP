@@ -5,10 +5,16 @@ library(leaflet)
 library(sf)
 library(shinyWidgets)
 library(ggiraph)
+# library(bslib)
+# library(thematic)
+
 
 df <- read_rds("data.rds")
+df_country <- read_rds("data_country.rds")
 map_simple <- read_rds("map_simple.rds")
-theme_set(theme_light())
+
+thematic_shiny(font = "auto")
+# theme_update(text = element_text(size = 17))
 
 legend_tbl <- df %>% distinct(series) %>% 
   bind_cols(tibble(prefix = c("$", "$", "", "", "", ""),
@@ -16,13 +22,14 @@ legend_tbl <- df %>% distinct(series) %>%
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-
+  # theme = bs_theme(bootswatch = "minty", font_scale = 1.5),
+  
   # Application title
-  titlePanel("Old Faithful Geyser Data"),
+  titlePanel("Europe's regional development"),
 
   # Sidebar with a slider input for number of bins
   sidebarLayout(
-    sidebarPanel(
+    sidebarPanel(width = 3,
       selectizeInput("series_input",
         "Series:",
         choices = unique(df$series),
@@ -39,16 +46,17 @@ ui <- fluidPage(
 
     # Show a plot of the generated distribution
     mainPanel(
-      leafletOutput("leaflet_map"),
-      # verbatimTextOutput("click_test"),
-      # verbatimTextOutput("region_click"),
       fluidRow(
-        column(width = 6,
-               ggiraphOutput("stacked_fill"))
-      )
+        column(width = 7,
+               leafletOutput("leaflet_map", height = 800)),
+        column(width = 5,
+               ggiraphOutput("stacked_fill"),
+               ggiraphOutput("facet_line")))
+
     )
   )
 )
+
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
@@ -113,10 +121,9 @@ server <- function(input, output) {
   output$leaflet_map <- renderLeaflet({
     
     leaflet() %>%
-      fitBounds(lat1 = 29,
-                lng1 = 16.0,
-                lat2 = 70,
-                lng2 = 31.1656) %>% 
+      setView(lng = 12,
+              lat = 56,
+              zoom = 4) %>% 
       addProviderTiles("CartoDB.Positron")
   })
   
@@ -148,10 +155,8 @@ server <- function(input, output) {
         ))
   })
   
-  output$click_test <- renderPrint({reactiveValuesToList(input)})
-  
-  output$region_click <- renderPrint(input$leaflet_map_shape_click$id)
-  
+  # output$click_test <- renderPrint({reactiveValuesToList(input)})
+
   output$stacked_fill <- renderggiraph({
     
     req(input$leaflet_map_shape_click$id)
@@ -161,6 +166,7 @@ server <- function(input, output) {
                            "Industry share of employment",
                            "Services share of employment"),
              region == input$leaflet_map_shape_click$id) %>% 
+      mutate(series = str_remove(series, "share of employment")) %>% 
       ggplot(aes(year, value, fill = series, tooltip = series)) +
       geom_area_interactive(position = "fill") +
       scale_y_continuous(labels = scales::percent_format()) +
@@ -168,10 +174,47 @@ server <- function(input, output) {
       theme(legend.position = "bottom") +
       labs(x = NULL,
            y = NULL,
-           fill = NULL)
+           fill = NULL,
+           title = "Employment composition")
     
     
     ggiraph(ggobj = g)
+    
+  })
+  
+  output$facet_line <- renderggiraph({
+    
+    req(input$leaflet_map_shape_click$id)
+    
+    country_name <- df %>% 
+      filter(region == input$leaflet_map_shape_click$id) %>% 
+      distinct(country_current_borders) %>% pull()
+    
+    f <- df %>% 
+      filter(series %in% c("Population", "Regional GDP (2011 $m)"),
+             region == input$leaflet_map_shape_click$id) %>% 
+      inner_join(df_country, by = c("country_current_borders", "year", "series")) %>% 
+      pivot_longer(c(value, country_avg), names_to = "stat") %>% 
+      mutate(stat = case_when(
+        stat == "country_avg" ~ str_c("Avg. for regions in ", country_name),
+        TRUE ~ input$leaflet_map_shape_click$id
+      )) %>% 
+      mutate(value_disp = format(round(value), big.mark = " "),
+             tooltip = str_c(stat, " ", value_disp)) %>% 
+      ggplot(aes(year, value, colour = stat, tooltip = tooltip)) +
+      geom_line(aes(year, value, colour = stat, group = stat), cex = 2, alpha = .8) +
+      geom_point_interactive(cex = 3, alpha = .8) +
+      facet_wrap(~ series, scales = "free_y", nrow = 2) +
+      scale_y_continuous(labels = scales::number_format()) +
+      scale_colour_manual(values = c("#D53E4F", "#66C2A5")) +
+      theme(legend.position = "bottom") +
+      labs(x = NULL,
+           y = NULL,
+           colour = NULL,
+           title = "Population and GDP") 
+    
+    
+    ggiraph(ggobj = f)
     
   })
   

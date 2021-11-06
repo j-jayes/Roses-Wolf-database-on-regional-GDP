@@ -235,15 +235,28 @@ df_country <- df %>%
   summarise(country_avg = mean(value)) %>% 
   ungroup()
 
+# df_country %>% write_rds("data_country.rds")
+
+country_name <- df %>% 
+  filter(region == "Andalucía") %>% 
+  distinct(country_current_borders) %>% pull()
 
 df %>% 
-  filter(series %in% c("Population"),
-         region == "Tübingen, Regierungsbezirk") %>% 
+  filter(series %in% c("Population", "Regional GDP (2011 $m)"),
+         region == "Andalucía") %>% 
   inner_join(df_country, by = c("country_current_borders", "year", "series")) %>% 
   pivot_longer(c(value, country_avg), names_to = "stat") %>% 
-  ggplot(aes(year, value, colour = stat)) +
-  geom_line() +
-  scale_y_continuous(labels = scales::number_format())
+  mutate(stat = case_when(
+    stat == "country_avg" ~ country_name,
+    TRUE ~ "Andalucía"
+  )) %>% 
+  ggplot(aes(year, value, colour = stat, tooltip = stat)) +
+  geom_line_interactive(cex = 2) +
+  facet_wrap(~ series, scales = "free", nrow = 2) +
+  scale_y_continuous(labels = scales::number_format()) +
+  labs(x = NULL,
+       y = NULL,
+       colour = NULL)
 
 ```
 
