@@ -4,9 +4,11 @@ library(glue)
 library(leaflet)
 library(sf)
 library(shinyWidgets)
+library(ggiraph)
 
 df <- read_rds("data.rds")
 map_simple <- read_rds("map_simple.rds")
+theme_set(theme_light())
 
 legend_tbl <- df %>% distinct(series) %>% 
   bind_cols(tibble(prefix = c("$", "$", "", "", "", ""),
@@ -38,6 +40,12 @@ ui <- fluidPage(
     # Show a plot of the generated distribution
     mainPanel(
       leafletOutput("leaflet_map"),
+      # verbatimTextOutput("click_test"),
+      # verbatimTextOutput("region_click"),
+      fluidRow(
+        column(width = 6,
+               ggiraphOutput("stacked_fill"))
+      )
     )
   )
 )
@@ -120,7 +128,8 @@ server <- function(input, output) {
       clearShapes() %>%
       addPolygons(color = ~ pal(value),
                   fillOpacity = .3,
-                  popup = ~ html)
+                  popup = ~ html,
+                  layerId = ~region)
     
   })
   
@@ -139,6 +148,32 @@ server <- function(input, output) {
         ))
   })
   
+  output$click_test <- renderPrint({reactiveValuesToList(input)})
+  
+  output$region_click <- renderPrint(input$leaflet_map_shape_click$id)
+  
+  output$stacked_fill <- renderggiraph({
+    
+    req(input$leaflet_map_shape_click$id)
+    
+    g <- df %>% 
+      filter(series %in% c("Agric. share of employment",
+                           "Industry share of employment",
+                           "Services share of employment"),
+             region == input$leaflet_map_shape_click$id) %>% 
+      ggplot(aes(year, value, fill = series, tooltip = series)) +
+      geom_area_interactive(position = "fill") +
+      scale_y_continuous(labels = scales::percent_format()) +
+      scale_fill_brewer(palette = "Spectral") +
+      theme(legend.position = "bottom") +
+      labs(x = NULL,
+           y = NULL,
+           fill = NULL)
+    
+    
+    ggiraph(ggobj = g)
+    
+  })
   
 }
 

@@ -53,7 +53,7 @@ df <- read_rds("data.rds")
 ```{r}
 library(sf)
 
-map <- read_sf("regions_nuts2.shp") %>% janitor::clean_names()
+# map <- read_sf("regions_nuts2.shp") %>% janitor::clean_names()
 
 # map_tbl <- map %>% as_tibble()
 # 
@@ -190,6 +190,60 @@ df %>%
   filter(region %in% regions$region) %>% 
   ggplot(aes(year, value, colour = region)) +
   geom_line()
+
+```
+
+
+```{r}
+library(ggiraph)
+
+g <- df %>% 
+  filter(series %in% c("Agric. share of employment",
+                     "Industry share of employment",
+                     "Services share of employment"),
+         region == "Tübingen, Regierungsbezirk") %>% 
+  ggplot(aes(year, value, fill = series, tooltip = series)) +
+  geom_area_interactive(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(x = NULL,
+       y = NULL,
+       fill = NULL)
+  
+
+ggiraph(ggobj = g)
+```
+
+```{r}
+df %>% 
+  filter(series %in% c("Regional GDP (1990 $m)",
+                     "Population"),
+         region == "Salzburg") %>% 
+  # mutate(tooltip = glue("{series} {value}")) %>%
+  ggplot(aes(year, value, fill = series)) +
+  geom_line() +
+  # scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = NULL,
+       y = NULL,
+       fill = NULL)
+
+
+df_country <- df %>% 
+  group_by(year,
+           country_current_borders,
+           series) %>% 
+  summarise(country_avg = mean(value)) %>% 
+  ungroup()
+
+
+df %>% 
+  filter(series %in% c("Population"),
+         region == "Tübingen, Regierungsbezirk") %>% 
+  inner_join(df_country, by = c("country_current_borders", "year", "series")) %>% 
+  pivot_longer(c(value, country_avg), names_to = "stat") %>% 
+  ggplot(aes(year, value, colour = stat)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::number_format())
 
 ```
 
