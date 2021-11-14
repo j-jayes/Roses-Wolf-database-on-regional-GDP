@@ -6,14 +6,15 @@ library(sf)
 library(shinyWidgets)
 library(ggiraph)
 library(bslib)
-library(thematic)
+# library(thematic)
 
 
 df <- read_rds("data.rds")
 df_country <- read_rds("data_country.rds")
 map_simple <- read_rds("map_simple.rds")
 
-thematic_shiny(font = "auto")
+# thematic_shiny(font = "auto")
+theme_set(theme_light())
 theme_update(text = element_text(size = 17))
 
 legend_tbl <- df %>% distinct(series) %>% 
@@ -22,7 +23,7 @@ legend_tbl <- df %>% distinct(series) %>%
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-  theme = bs_theme(bootswatch = "solar", font_scale = 1.5),
+  # theme = bs_theme(bootswatch = "solar", font_scale = 1.5),
   
   # Application title
   titlePanel("Europe's regional development"),
