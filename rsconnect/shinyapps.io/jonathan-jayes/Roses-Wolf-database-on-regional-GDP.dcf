@@ -5,10 +5,10 @@ account: jonathan-jayes
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 5067080
-bundleId: 5226479
+bundleId: 5250717
 url: https://jonathan-jayes.shinyapps.io/Roses-Wolf-database-on-regional-GDP/
-when: 1636361164.00823
-lastSyncTime: 1636361164.00823
+when: 1636911149.89606
+lastSyncTime: 1636911149.89606
 asMultiple: FALSE
 asStatic: FALSE
 ignoredFiles: app_2.R|cleaning-script.Rmd|data.xlsx|README.md|regions_nuts2.cpg|regions_nuts2.dbf|regions_nuts2.prj|regions_nuts2.qpj|regions_nuts2.shp|regions_nuts2.shx

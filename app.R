@@ -6,7 +6,7 @@ library(sf)
 library(shinyWidgets)
 library(ggiraph)
 library(bslib)
-# library(thematic)
+library(metathis)
 
 
 df <- read_rds("data.rds")
@@ -27,6 +27,23 @@ ui <- fluidPage(
   
   # Application title
   titlePanel("Europe's regional development"),
+  
+  meta() %>%
+    meta_description(
+      "Europe's regional development Shiny App"
+    ) %>% 
+    meta_name("github-repo" = "j-jayes/Roses-Wolf-database-on-regional-GDP") %>% 
+    meta_viewport() %>% 
+    meta_social(
+      title = "Roses Wolf database on regional GDP",
+      url = "https://jonathan-jayes.shinyapps.io/Roses-Wolf-database-on-regional-GDP/",
+      image = "https://github.com/j-jayes/Roses-Wolf-database-on-regional-GDP/blob/main/images/app.PNG",
+      image_alt = "Roses Wolf database on regional GDP App Screenshot",
+      og_type = "app",
+      og_author = c("Jonathan Jayes"),
+      twitter_card_type = "summary",
+      twitter_creator = "@JonathanJayes"
+    ),
 
   # Sidebar with a slider input for number of bins
   sidebarLayout(
