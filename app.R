@@ -10,6 +10,7 @@ library(metathis)
 
 
 df <- read_rds("data.rds")
+
 df_country <- read_rds("data_country.rds")
 map_simple <- read_rds("map_simple.rds")
 
@@ -18,8 +19,8 @@ theme_set(theme_light())
 theme_update(text = element_text(size = 17))
 
 legend_tbl <- df %>% distinct(series) %>% 
-  bind_cols(tibble(prefix = c("$", "$", "", "", "", ""),
-                   suffix = c("m", "m", "", "%", "%", "%")))
+  bind_cols(tibble(prefix = c("", "", "", "", "", "", "", "", "", ""),
+                   suffix = c("", "", "", "%", "%", "%", "", "", "", "")))
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -51,7 +52,7 @@ ui <- fluidPage(
       selectizeInput("series_input",
         "Series:",
         choices = unique(df$series),
-        selected = "Industry share of employment",
+        selected = "Regional GDP per capita (1990 $)",
         multiple = FALSE
       ),
       sliderTextInput("year_input",
@@ -78,6 +79,18 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+  
+  observeEvent(once = TRUE,ignoreNULL = FALSE, ignoreInit = FALSE, eventExpr = df_map, { 
+    showModal(modalDialog(
+      title = "Rosés-Wolf database on regional GDP", 
+      # h1('Landing Page'),
+      p("The Rosés-Wolf database on regional GDP provides data on the economic development of European regions at the level of NUTS-2 regions for the years 1900 - 2015. It contains information of nominal GDP (in 1990 and 2011 PPP), population, area, and on sector-level employment shares."),
+      p("Click on the 'Series' dropdown menu to change the variable displayed on the map."),
+      p("Drag the slider to change the year shown on the map, or click the triangle to animate the map."),
+      p("Click on a region to compare regional and national dynamics over time."),
+      a(href="https://www.wiwi.hu-berlin.de/de/professuren/vwl/wg/roses-wolf-database-on-regional-gdp", "Link to the underlying data")
+    ))
+  })
 
   legend_prefix <- reactive({
     legend_tbl %>%
@@ -131,6 +144,7 @@ server <- function(input, output) {
   
   colorpal <- reactive({
     colorNumeric(
+      reverse = TRUE,
       palette = "Spectral",
       domain = df_map()$value
     )
@@ -154,23 +168,27 @@ server <- function(input, output) {
       addPolygons(color = ~ pal(value),
                   fillOpacity = .3,
                   popup = ~ html,
-                  layerId = ~region)
+                  layerId = ~ region)
     
   })
   
   observe({
-    pal <- colorpal()
-
     leafletProxy("leaflet_map", data = df_map()) %>%
       clearControls() %>%
-      addLegend(position = "bottomright",
-                pal = pal, 
-                values = ~value,
-                title = glue(input$series_input),
-                labFormat = labelFormat(
+      addLegend(
+        position = "bottomright",
+        pal = colorNumeric(
+          palette = "Spectral",
+          domain = df_map()$value
+        ),
+        values = ~value,
+        title = glue(input$series_input),
+        labFormat = labelFormat(
+          transform = function(value) sort(value, decreasing = TRUE),
           prefix = glue(legend_prefix()),
           suffix = glue(legend_suffix())
-        ))
+        )
+      )
   })
   
   # output$click_test <- renderPrint({reactiveValuesToList(input)})
@@ -240,3 +258,4 @@ server <- function(input, output) {
 
 # Run the application
 shinyApp(ui = ui, server = server)
+

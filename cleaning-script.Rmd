@@ -22,9 +22,12 @@ library(tidyverse)
 # df <- df %>%
 #   mutate(value = case_when(
 #     series == "Table A.3: Population (1000s)" ~ value * 1000,
-#     series %in% c("Table A.4: Share of Agriculture in Total Employment",
-#                   "Table A.5: Share of Industry and Mining in Total Employment",
-#                   "Table A.6: Share of Services in Total Employment") ~ value * 100,
+#     series %in% c(
+#       "Table A.4: Share of Agriculture in Total Employment",
+#       "Table A.5: Share of Industry and Mining in Total Employment",
+#       "Table A.6: Share of Services in Total Employment"
+#     ) ~ value * 100,
+#     str_detect(series, "Regional GDP") ~ value * 1e6,
 #     TRUE ~ value
 #   ))
 # 
@@ -40,6 +43,28 @@ library(tidyverse)
 #     series == "Table A.6: Share of Services in Total Employment" ~ "Services share of employment",
 #     TRUE ~ series
 #   ))
+# 
+# # now make wide
+# 
+# df_pc <- df %>%
+#   filter(str_detect(series, "Regional GDP|Population")) %>%
+#   pivot_wider(names_from = series, values_from = value) %>%
+#   mutate(across(starts_with("Regional"), ~.x / Population)) %>%
+#   rename(`Regional GDP per capita (1990 $)` = `Regional GDP (1990 $m)`,
+#          `Regional GDP per capita (2011 $)` = `Regional GDP (2011 $m)`) %>%
+#   pivot_longer(c(`Regional GDP per capita (1990 $)`:Population), names_to = "series") %>%
+#   filter(str_detect(series, "per capita"))
+# 
+# df <- df %>%
+#   bind_rows(df_pc)
+# 
+# df <- df %>%
+#   pivot_wider(names_from = series, values_from = value) %>%
+#   mutate(`Log of Regional GDP (1990 $m)` = log(`Regional GDP (1990 $m)`),
+#          `Log of Regional GDP (2011 $m)` = log(`Regional GDP (2011 $m)`))
+# 
+# df <- df %>%
+#   pivot_longer(-c(country_current_borders:year), names_to = "series")
 # 
 # df %>% write_rds("data.rds")
 
@@ -178,6 +203,26 @@ df_map %>%
         labFormat = labelFormat(prefix = glue(legend_prefix),
                                 suffix = glue(legend_suffix)))
 ```
+
+### Assignment 3
+
+```{r}
+df_map %>% 
+  inner_join(map_simple) %>% 
+  filter(country_current_borders == "Italy") %>% 
+  st_sf() %>% 
+  leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addPolygons(color = ~ pal(value),
+              fillOpacity = .3,
+              popup = ~ html) %>% 
+  addLegend(position = "bottomright",
+        pal = pal, values = ~value,
+        title = glue("{ series_input }"),
+        labFormat = labelFormat(prefix = glue(legend_prefix),
+                                suffix = glue(legend_suffix)))
+```
+
 
 ## Plots
 
